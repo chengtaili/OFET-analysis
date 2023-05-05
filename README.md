@@ -5,4 +5,5 @@ for 2636b labview test data process
 ![image](https://user-images.githubusercontent.com/130371687/230909781-ec729cc0-f978-49e1-89ec-6a374ada9c3d.png)
 # Input your device w/l and ci here
 ![image](https://user-images.githubusercontent.com/130371687/230910022-42ef5795-8e0c-4652-90bd-51bb12938f1d.png)
-
+# Advanced P-type include lines of Idssqrt, and average mobility
+![image](https://user-images.githubusercontent.com/130371687/236437333-d67459bb-a26d-43d0-b0b4-b7c0a465e877.png)
