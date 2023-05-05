@@ -1,0 +1,132 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+from matplotlib.lines import Line2D
+def linear_func(x, a, b):
+    return a * x + b
+
+# 读取文件
+file_path = r'D:\IV\20230408IV\wl0.5-pmma10-3.lvm'
+df = pd.read_csv(file_path, sep='\t', header=21)
+
+# 删除第一列、第五列、第六列
+df = df.drop(df.columns[[0, 4, 5]], axis=1)
+
+# 更改列名
+df.columns = ['VG', 'Ids', 'Igs']
+
+# 插入新列
+df['idssqrt'] = df['Ids'].apply(lambda x: x**0.5)
+df = df[['VG', 'Ids', 'idssqrt', 'Igs']]
+
+# 找到第一个局部最小值（VG=b）的索引
+split_index = df[(df['VG'].shift(1) > df['VG']) & (df['VG'].shift(-1) > df['VG'])].index[0]
+
+# 提取第一组循环扫描数据
+df_filtered = df.iloc[:split_index + 1]
+
+# 计算idssqrt的一阶微分
+df_filtered['idssqrt_diff'] = np.gradient(df_filtered['idssqrt'], df_filtered['VG'])
+
+# 计算所需的数据
+wl = 0.3
+Ci = 1.15e-8
+df_filtered['result'] = (df_filtered['idssqrt_diff']**2) * 2 / (wl * Ci)
+
+# 创建一个1x2的子图布局
+fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(14, 8))
+
+# 绘制第一个子图（交换后）
+ax1.plot(df['VG'], df['Ids'], '-', color='blue', label='Ids')
+ax1.plot(df['VG'], df['Igs'], 'g.', label='Igs')
+ax1.set_xlabel('Gate Voltage (V)', fontsize=16)
+ax1.set_ylabel('Drain-Source Current (A)', color='blue', fontsize=16)
+ax1.set_yscale('log')
+ax1.margins(0, 0.05)
+
+ax1_twin = ax1.twinx()
+ax1_twin.plot(df['VG'], df['idssqrt'], '-', color='red', label='idssqrt')
+ax1_twin.set_ylabel('Square Root of Ids (A^0.5)', color='red', fontsize=16)
+
+# 添加 w/l 和 Ci 的值到第一个子图的标题
+ax1.set_title(f'w/l = {wl}, Ci = {Ci:.2e}', fontsize=16)
+
+# 绘制第二个子图（交换后）
+ax2.plot(df_filtered['VG'], df_filtered['result'])
+ax2.set_xlabel('Gate Voltage (V)', fontsize=16)
+ax2.set_ylabel('Mobility (cm^2/Vs)', fontsize=16)
+ax2.margins(0, 0.05)
+
+# Find the indices corresponding to the first sweep (from point 'a' to point 'b')
+first_sweep_indices = df_filtered.index
+
+# 设置拟合的区间
+xdata_ab = df_filtered[(df_filtered['VG'] >= -60) & (df_filtered['VG'] <= -20)]['VG']
+ydata_ab = df_filtered[(df_filtered['VG'] >= -60) & (df_filtered['VG'] <= -20)]['idssqrt']
+
+popt_ab, pcov_ab = curve_fit(linear_func, xdata_ab, ydata_ab)
+
+# 在第一个子图中绘制直线 (from a to b)
+ax1_twin.plot(xdata_ab, linear_func(xdata_ab, *popt_ab), '--', color='orange', label='Linear Fit (a to b)')
+ax1_twin.legend(loc='upper right')
+
+# 提取第二个扫描过程 (从点 'b' 到点 'a') 的数据
+df_second_sweep = df.iloc[split_index:]
+
+# 设置拟合的区间
+xdata_ba = df_second_sweep[(df_second_sweep['VG'] >= -60) & (df_second_sweep['VG'] <= -20)]['VG']
+ydata_ba = df_second_sweep[(df_second_sweep['VG'] >= -60) & (df_second_sweep['VG'] <= -20)]['idssqrt']
+
+popt_ba, pcov_ba = curve_fit(linear_func, xdata_ba, ydata_ba)
+
+# 在第一个子图中绘制直线 (from b to a)
+ax1_twin.plot(xdata_ba, linear_func(xdata_ba, *popt_ba), '-.', color='purple', label='Linear Fit (b to a)')
+ax1_twin.legend(loc='upper right')
+# 在第一个子图中绘制直线 (from a to b)
+line_ab, = ax1_twin.plot(xdata_ab, linear_func(xdata_ab, *popt_ab), '--', color='orange', label='Linear Fit (a to b)')
+ax1_twin.legend(loc='upper left')
+
+# 在第一个子图中绘制直线 (from b to a)
+line_ba, = ax1_twin.plot(xdata_ba, linear_func(xdata_ba, *popt_ba), '-.', color='purple', label='Linear Fit (b to a)')
+ax1_twin.legend(loc='upper left')
+
+# 创建一个空列表，用于存储图例条目
+legend_elements = []
+# 添加从 a 到 b 的拟合曲线图例
+legend_elements.append(line_ab)  
+# 添加从 b 到 a 的拟合曲线图例
+legend_elements.append(line_ba) 
+# 添加 Ids 和 Igs 的图例
+legend_elements.append(Line2D([0], [0], color='blue', linestyle='-', label='Ids'))
+legend_elements.append(Line2D([0], [0], color='green', marker='.', linestyle='', label='Igs'))
+legend_elements.append(Line2D([0], [0], color='red', linestyle='-', label='idssqrt'))
+
+# 在 ax1_twin 上显示合并的图例
+ax1_twin.legend(handles=legend_elements, loc='upper right')
+
+# 计算 μ 和 Vth
+mu_ab = (popt_ab[0]**2) * 2 / (wl * Ci)
+Vth_ab = -popt_ab[1] / popt_ab[0]
+
+mu_ba = (popt_ba[0]**2) * 2 / (wl * Ci)
+Vth_ba = -popt_ba[1] / popt_ba[0]
+
+# 将变量格式化为橙色和紫色
+orange_mu_vth = f'{mu_ab:.2e} '
+purple_mu_vth = f'{mu_ba:.2e} '
+
+# 创建文本标签对象，并将其添加到子图中
+title = ax2.text(0.5, 1.07, 'Mobility and Threshold Voltage', ha='center', va='bottom', transform=ax2.transAxes, fontsize=16)
+mu_ab_label = ax2.text(0.03, 1.04, f'μ(ave)  = {orange_mu_vth} cm^2/Vs, Vth  = {Vth_ab:.2f} V', transform=ax2.transAxes, fontsize=14)
+mu_ba_label = ax2.text(0.03, 1.01, f'μ(ave) = {purple_mu_vth} cm^2/Vs, Vth  = {Vth_ba:.2f} V', transform=ax2.transAxes, fontsize=14)
+
+# 将文本标签的颜色设置为橙色和紫色
+mu_ab_label.set_color('orange')
+mu_ba_label.set_color('purple')
+
+# 调整子图间距
+plt.subplots_adjust(wspace=0.4)
+
+# 显示图形
+plt.show()
