@@ -1,0 +1,133 @@
+from IPython.display import display, clear_output
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+from matplotlib.lines import Line2D
+from ipywidgets import interact_manual, widgets
+import io
+
+# 定义线性拟合函数
+def linear_func(x, a, b):
+    return a * x + b
+
+# 定义函数生成图表
+def generate_plot(file_content, wl, Ci, fit_start, fit_end):
+    # 读取文件
+    df = pd.read_csv(file_path, sep='\t', skiprows=21, error_bad_lines=False)
+
+    # 删除不需要的列
+    df = df.drop(df.columns[[0, 4, 5]], axis=1)
+
+    # 更改列名
+    df.columns = ['VG', 'Ids', 'Igs']
+
+    # 插入新列
+    df['idssqrt'] = df['Ids'].apply(lambda x: x**0.5)
+    df = df[['VG', 'Ids', 'idssqrt', 'Igs']]
+
+    # 计算idssqrt的一阶微分
+    df['idssqrt_diff'] = np.gradient(df['idssqrt'], df['VG'])
+
+    # 计算所需的数据
+    df['result'] = (df['idssqrt_diff']**2) * 2 / (wl * Ci)
+
+    # 创建图表
+    fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(12, 8))
+
+# 绘制第一个子图
+    ax1.plot(df['VG'], df['Ids'], '-', color='blue', label='Ids')
+    ax1.plot(df['VG'], df['Igs'], 'g.', label='Igs')
+    ax1.set_xlabel('Gate Voltage (V)', fontsize=16)
+    ax1.set_ylabel('Drain-Source Current (A)', color='blue', fontsize=16)
+    ax1.set_yscale('log')
+    ax1.margins(0, 0.05)
+
+
+    # 显示第一个 Ids 数据
+    first_ids_value = df['Ids'].iloc[0]
+    title = f'w/l = {wl}, Ci = {Ci:.2e}\nIon = {first_ids_value:.2e} A'
+    ax1.set_title(title, fontsize=16)
+
+    ax1_twin = ax1.twinx()
+    ax1_twin.plot(df['VG'], df['idssqrt'], '-', color='red', label='idssqrt')
+    ax1_twin.set_ylabel('Square Root of Ids (A^0.5)', color='red', fontsize=16)
+    # 绘制第二个子图
+    ax2.plot(df['VG'], df['result'])
+    ax2.set_xlabel('Gate Voltage (V)', fontsize=16)
+    ax2.set_ylabel('Mobility (cm^2/Vs)', fontsize=16)
+    ax2.margins(0, 0.05)
+
+    # 设置拟合的区间
+    xdata_ab = df[(df['VG'] >= fit_start) & (df['VG'] <= fit_end)]['VG']
+    ydata_ab = df[(df['VG'] >= fit_start) & (df['VG'] <= fit_end)]['idssqrt']
+
+    popt_ab, _ = curve_fit(linear_func, xdata_ab, ydata_ab)
+
+    # 在第一个子图中绘制直线 (from a to b)
+    ax1_twin.plot(xdata_ab, linear_func(xdata_ab, *popt_ab), '--', color='orange', label='Linear Fit (a to b)')
+    ax1_twin.legend(loc='upper right')
+    line_ab, = ax1_twin.plot(xdata_ab, linear_func(xdata_ab, *popt_ab), '--', color='orange', label='Linear Fit (a to b)')
+    ax1_twin.legend(loc='upper left')
+
+    # 创建图例
+    legend_elements = []
+    legend_elements.append(line_ab)
+    legend_elements.append(Line2D([0], [0], color='blue', linestyle='-', label='Ids'))
+    legend_elements.append(Line2D([0], [0], color='green', marker='.', linestyle='', label='Igs'))
+    legend_elements.append(Line2D([0], [0], color='red', linestyle='-', label='idssqrt'))
+
+    ax1_twin.legend(handles=legend_elements, loc='upper right')
+
+    # 计算 μ 和 Vth
+    mu_ab = (popt_ab[0]**2) * 2 / (wl * Ci)
+    Vth_ab = -popt_ab[1] / popt_ab[0]
+
+    # 创建文本标签对象，并将其添加到子图中
+    title = ax2.text(0.5, 1.07, 'Mobility and Threshold Voltage', ha='center', va='bottom', transform=ax2.transAxes, fontsize=16)
+    mu_ab_label = ax2.text(0.03, 1.04, f'μ(ave)  = {mu_ab:.2e} cm^2/Vs, Vth  = {Vth_ab:.2f} V', transform=ax2.transAxes, fontsize=14)
+
+    # 将文本标签的颜色
+    mu_ab_label.set_color('orange')
+
+    # 调整子图间距
+    plt.subplots_adjust(wspace=0.4)
+
+    # 显示图形
+    plt.show()
+
+# 创建上传文件按钮
+uploader = widgets.FileUpload(accept='.lvm', multiple=False)
+
+# 创建输入控件
+wl = widgets.FloatText(value=0.33, description='W/L:')
+Ci = widgets.FloatText(value=1.15e-8, description='Ci:', format="%.2e")
+fit_start = widgets.FloatText(value=-60, description='Fit start:')
+fit_end = widgets.FloatText(value=-30, description='Fit end:')
+
+# 创建运行按钮
+run_button = widgets.Button(description='Generate Plot')
+
+# 创建一个输出窗口
+output = widgets.Output()
+
+# 定义运行按钮的事件
+def on_run_button_click(button):
+    with output:
+        clear_output(wait=True)
+        
+        if not uploader.value:
+            print("Please upload a LVM file.")
+            return
+
+        file_content = list(uploader.value.values())[0]['content']  # 获取文件内容
+        # 调用 generate_plot 函数并传递文件内容
+        fig = generate_plot(file_content, wl.value, Ci.value, fit_start.value, fit_end.value)
+        plt.show(fig)
+
+
+# 为运行按钮分配事件
+run_button.on_click(on_run_button_click)
+
+# 在Notebook中显示所有部件
+display(uploader, wl, Ci, fit_start, fit_end, run_button, output)
