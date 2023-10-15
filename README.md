@@ -13,5 +13,5 @@ for 2636b labview test data process
 for new environment:
 conda install pandas numpy matplotlib scipy ipywidgets
 ![image](https://user-images.githubusercontent.com/130371687/236629614-af035bb8-f3f1-4fa4-8de7-bf995fe55003.png)
-for single scan
+# Update: for single scan
 ![70091122b1ac3a3daffa88c12009c2e](https://github.com/chengtaili/OFET-analysis/assets/130371687/addf76bc-5e58-42f9-a697-2e12b2195d39)
